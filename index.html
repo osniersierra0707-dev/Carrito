@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot ESP32 - Modos</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/estilos.css') }}">
+</head>
+<body>
+    <main class="panel">
+        <span class="etiqueta">ROBOT INTELIGENTE IOT</span>
+        <h1>Control del Carro</h1>
+
+        <div class="estado" id="estado-conexion">Comprobando conexión...</div>
+        <p class="nota">Dirección IP: <strong id="ip-esp32">Cargando...</strong></p>
+
+        <!-- Selector de modos -->
+        <div class="modo-selector" style="margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <button onclick="cambiarModo('manual')" id="btn-manual" style="background:#28a745; color:white; padding:10px 15px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">Manual</button>
+            <button onclick="cambiarModo('automatico')" id="btn-auto" style="background:#6c757d; color:white; padding:10px 15px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">Automático</button>
+            <button onclick="cambiarModo('seguidor')" id="btn-seguidor" style="background:#6c757d; color:white; padding:10px 15px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">Seguidor</button>
+        </div>
+
+        <!-- Control de velocidad (funciona en cualquier modo) -->
+        <div class="velocidad" style="margin-bottom: 20px; text-align: center;">
+            <label for="slider-velocidad" style="font-weight:bold;">
+                Velocidad: <span id="valor-velocidad">60</span>%
+            </label><br>
+            <input type="range" id="slider-velocidad" min="30" max="100" step="5" value="60"
+                   style="width: 80%; max-width: 320px; margin-top: 8px;">
+            <p class="nota" style="margin-top:4px;">Por debajo de ~30% los motores pueden no arrancar.</p>
+        </div>
+
+        <!-- Cruceta (solo útil en modo manual) -->
+        <div class="control-panel" id="panel-cruceta">
+            <button class="btn-up" onclick="enviarComando('adelante')">▲</button>
+            <button class="btn-left" onclick="enviarComando('izquierda')">◀</button>
+            <button class="btn-stop" onclick="enviarComando('detener')">STOP</button>
+            <button class="btn-right" onclick="enviarComando('derecha')">▶</button>
+            <button class="btn-down" onclick="enviarComando('atras')">▼</button>
+        </div>
+
+        <div id="resultado-accion" style="margin-top: 15px; font-weight: bold; color: #333;"></div>
+    </main>
+
+    <script>
+        async function cambiarModo(tipo) {
+            const btnManual = document.getElementById("btn-manual");
+            const btnAuto = document.getElementById("btn-auto");
+            const btnSeguidor = document.getElementById("btn-seguidor");
+            const panelCruceta = document.getElementById("panel-cruceta");
+            const resultado = document.getElementById("resultado-accion");
+
+            try {
+                const res = await fetch(`/modo/${tipo}`, { method: "POST" });
+                const data = await res.json();
+
+                if (data.ok) {
+                    btnManual.style.background = "#6c757d";
+                    btnAuto.style.background = "#6c757d";
+                    btnSeguidor.style.background = "#6c757d";
+
+                    if (tipo === 'manual') {
+                        btnManual.style.background = "#28a745";
+                        panelCruceta.style.opacity = "1";
+                        panelCruceta.style.pointerEvents = "auto";
+                        resultado.textContent = "Modo Manual activado";
+                    } else if (tipo === 'automatico') {
+                        btnAuto.style.background = "#28a745";
+                        panelCruceta.style.opacity = "0.4";
+                        panelCruceta.style.pointerEvents = "none";
+                        resultado.textContent = "Modo Automático: esquiva obstáculos a ≤ 10 cm";
+                    } else if (tipo === 'seguidor') {
+                        btnSeguidor.style.background = "#28a745";
+                        panelCruceta.style.opacity = "0.4";
+                        panelCruceta.style.pointerEvents = "none";
+                        resultado.textContent = "Modo Seguidor de Línea activado";
+                    }
+                }
+            } catch (e) {
+                resultado.textContent = "Error al cambiar de modo";
+            }
+        }
+
+        async function enviarComando(accion) {
+            try {
+                await fetch(`/mover/${accion}`, { method: "POST" });
+                document.getElementById("resultado-accion").textContent = `Acción: ${accion}`;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // ---- Velocidad ----
+        const slider = document.getElementById("slider-velocidad");
+        const etiquetaVel = document.getElementById("valor-velocidad");
+
+        async function enviarVelocidad(valor) {
+            try {
+                const res = await fetch(`/velocidad/${valor}`, { method: "POST" });
+                const data = await res.json();
+                if (!data.ok) {
+                    document.getElementById("resultado-accion").textContent = "No se pudo cambiar la velocidad";
+                }
+            } catch (e) {
+                document.getElementById("resultado-accion").textContent = "Error al enviar la velocidad";
+            }
+        }
+
+        // Muestra el valor mientras arrastras
+        slider.addEventListener("input", () => {
+            etiquetaVel.textContent = slider.value;
+        });
+        // Envía a la ESP32 al soltar el slider
+        slider.addEventListener("change", () => {
+            enviarVelocidad(slider.value);
+        });
+
+        async function verificarEstado() {
+            try {
+                const res = await fetch("/estado");
+                const datos = await res.json();
+                document.getElementById("ip-esp32").textContent = datos.ip;
+                const divEstado = document.getElementById("estado-conexion");
+                if (datos.conectado) {
+                    divEstado.textContent = "Está conectado";
+                    divEstado.className = "estado correcto";
+                } else {
+                    divEstado.textContent = "Desconectado";
+                    divEstado.className = "estado error";
+                }
+            } catch (e) {}
+        }
+
+        verificarEstado();
+        setInterval(verificarEstado, 5000);
+    </script>
+</body>
+</html>
